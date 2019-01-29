@@ -1,0 +1,134 @@
+---
+title: "popData"
+author: "jw"
+date: "27 januari 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(scales)
+library(swemaps)
+library(gganimate)
+
+theme_set(theme_light())
+
+lan_kommun <- as_tibble(read.csv2('county_region.csv')) %>%
+  mutate(code = gsub("\\D", "", code))
+
+popData1997_2017 <- as_tibble(read.csv2("popData1997_2017.csv", sep=';', skip = 2)) %>%
+  select(-ålder) %>%
+  gather(X1997:X2017, key=year, value = n) %>%
+  mutate(year = as.integer(gsub("[^0-9]", "", year)))
+
+popData1975_1996 <- as_tibble(read.csv2("popData1975_1996.csv", sep=';', skip = 2)) %>%
+  select(-ålder) %>%
+  gather(X1976:X1996, key=year, value = n) %>%
+  mutate(year = as.integer(gsub("[^0-9]", "", year)))
+
+popData1968_1975 <- as_tibble(read.csv2("popData1968_1975.csv", sep=';', skip = 2)) %>%
+  select(-ålder) %>%
+  gather(X1968:X1975, key=year, value = n) %>%
+  mutate(year = as.integer(gsub("[^0-9]", "", year)))
+
+popData <- bind_rows(popData1997_2017, popData1975_1996, popData1968_1975) %>%
+  mutate(code = substring(gsub("\\D", "", region), 1,2),
+         knkod = gsub("\\D", "", region),
+         region = gsub("\\d", "", region),
+         region = substring(region, 2)) %>%
+  left_join(lan_kommun, by = 'code')
+
+```
+
+
+```{r}
+countyRegionPop <- popData %>%
+  group_by(county, region, year) %>%
+  summarize(n = sum(n)) %>%
+  filter(n > 0)
+
+changeCountyRegionPop <- countyRegionPop %>%
+  group_by(county, year) %>%
+  summarize(n = sum(n)) %>%
+  mutate(changeInPop = (n - lag(n))/n,
+         changeInPop = ifelse(is.na(changeInPop), 0, changeInPop)) 
+
+changeCountyRegionPop%>%
+  ggplot(aes(year, changeInPop, color = county)) +
+  geom_line() 
+
+```
+
+
+```{r}
+
+countyPop <- popData %>%
+  group_by(code, year) %>%
+  summarise(nCounty = sum(n)) %>%
+  mutate(changeInPop = (nCounty - lag(nCounty))/nCounty,
+         changeInPop = ifelse(is.na(changeInPop), 0, changeInPop)) %>%
+  mutate(lnkod = paste0('00', as.character(code))) 
+
+map_ln_join = left_join(map_ln, countyPop, by = 'lnkod') 
+
+p <- ggplot(map_ln_join, aes(ggplot_long, 
+                          ggplot_lat, 
+                          group = lnnamn, 
+                          fill = changeInPop)) +
+  geom_polygon() +
+  scale_fill_gradient2(low = muted("blue"), 
+                        mid = "light grey",
+                        high = muted("red"), 
+                        midpoint = 0,
+                        limits = c(-0.02, 0.02)) +
+  coord_equal() +
+  labs(fill = '% change in population per county since year before') +
+  theme_void()
+
+
+p + transition_time(year) + 
+  labs(title = "Year: {frame_time}")
+
+
+```
+
+
+```{r}
+
+countyPop <- popData %>%
+  group_by(knkod, year) %>%
+  summarise(nRegion = sum(n)) %>%
+  mutate(changeInPop = (nRegion - lag(nRegion))/nRegion,
+         changeInPop = ifelse(is.na(changeInPop), 0, changeInPop)) 
+
+map_kn_join = left_join(map_kn, countyPop, by = 'knkod') 
+
+
+p <- ggplot(map_kn_join, aes(ggplot_long, 
+                          ggplot_lat, 
+                          group = knnamn, 
+                          fill = changeInPop)) +
+  geom_polygon() +
+  scale_fill_gradient2(low = muted("blue"), 
+                        mid = "light grey",
+                        high = muted("red"), 
+                        midpoint = 0,
+                        limits = c(-0.02, 0.02)) +
+  coord_equal() +
+  labs(fill = '% change in population per region since year before') +
+  theme_void()
+
+
+p + transition_time(year) + 
+  labs(title = "Year: {frame_time}")
+
+```
+
+
+
+
+
